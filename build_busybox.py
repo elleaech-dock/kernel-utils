@@ -1,5 +1,5 @@
 from subprocess import run
-from os import chdir
+from os import chdir, getcwd
 from abc import ABC, abstractmethod
 from sys import exit
 
@@ -22,8 +22,9 @@ class BoxBuilder(ABC):
     def __init__(self) -> None:
         super().__init__()
         self._command = "make"
-        self.__busybox_dir = "deps/busybox"
-        self.__basedir = "."
+        self.__basedir = f"{getcwd()}"
+        self._initrd = f"{self.__basedir}/initrd"
+        self.__busybox_dir = f"{self.__basedir}/deps/busybox"
 
     @abstractmethod
     def build(self, procs: int) -> None:
@@ -52,12 +53,16 @@ class ARMBoxBuilder(CrossBoxBuilder):
         self._goto_busybox_folder()
 
         run(
-            f"{self._command} -j{str(procs)} ARCH={self._arch} CROSS_COMPILE={self._cross_compiler} {self._dump_log()}",
+            f"{self._command} -j{str(procs)} \
+               ARCH={self._arch} CROSS_COMPILE={self._cross_compiler} {self._dump_log()}",
             shell=True,
             check=True,
         )
         run(
-            f"{self._command} ARCH={self._arch} CROSS_COMPILE={self._cross_compiler} install {self._dump_log()}",
+            f"{self._command} \
+               CONFIG_PREFIX={self._initrd} \
+               ARCH={self._arch} CROSS_COMPILE={self._cross_compiler} \
+               install {self._dump_log()}",
             shell=True,
             check=True,
         )
@@ -76,7 +81,7 @@ class X86_64BoxBuilder(BoxBuilder):
             check=True,
         )
         run(
-            f"{self._command} CONFIG_PREFIX=initrd install {self._dump_log()}",
+            f"{self._command} CONFIG_PREFIX={self._initrd} install {self._dump_log()}",
             shell=True,
             check=True,
         )

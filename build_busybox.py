@@ -1,5 +1,5 @@
 from subprocess import CompletedProcess, run
-from .build_interfaces import BuildAutomationTool, Busybox, CrossBusybox
+from build_interfaces import BuildAutomationTool, Busybox, CrossBusybox
 from sys import exit
 
 import argparse

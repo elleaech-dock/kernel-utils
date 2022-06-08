@@ -1,6 +1,5 @@
 from subprocess import CompletedProcess, run
-from os import chdir, getcwd
-from abc import ABC, abstractmethod
+from .build_interfaces import BuildAutomationTool, Busybox, CrossBusybox
 from sys import exit
 
 import argparse
@@ -16,47 +15,6 @@ def _parse_cli_args() -> argparse.ArgumentParser:
 
     args = parser.parse_args()
     return args
-
-
-class BuildAutomationTool(ABC):
-    def __init__(self) -> None:
-        super().__init__()
-        self._command = ""
-        self._log_dir = f"{getcwd()}/log"
-
-    @abstractmethod
-    def build(self, procs: int, arch: str="", cross_compiler: str="") -> CompletedProcess:
-        raise NotImplementedError
-
-    @abstractmethod
-    def install(self, config_prefix: str, arch: str="", cross_compiler: str=""):
-        raise NotImplementedError
-
-    def dump_log(self) -> str:
-        return f"2>&1 | tee -a {self._log_dir}"
-
-
-class BusyboxBuilder(ABC):
-    def __init__(self, build_automation: BuildAutomationTool) -> None:
-        super().__init__()
-        self._compiler = build_automation
-        base_dir = f"{getcwd()}"
-        self._initrd = f"{base_dir}/initrd"
-        self.__busybox_dir = f"{base_dir}/deps/busybox"
-
-    @abstractmethod
-    def build(self, procs: int) -> None:
-        raise NotImplementedError
-
-    def goto_busybox_folder(self) -> None:
-        chdir(self.__busybox_dir)
-
-
-class CrossBoxBuilder(BusyboxBuilder):
-    def __init__(self, build_automation: BuildAutomationTool, cross_compiler: str) -> None:
-        super().__init__(build_automation)
-        self._cross_compiler = cross_compiler
-        self._arch: str = None
 
 
 class Make(BuildAutomationTool):
@@ -83,7 +41,7 @@ class Make(BuildAutomationTool):
             )
 
 
-class ARMBoxBuilder(CrossBoxBuilder):
+class ARMBoxBuilder(CrossBusybox):
     def __init__(self, build_automation: BuildAutomationTool, cross_compiler: str) -> None:
         super().__init__(build_automation, cross_compiler)
         self._arch = "arm"
@@ -94,7 +52,7 @@ class ARMBoxBuilder(CrossBoxBuilder):
         self._compiler.install(self._initrd, arch = self._arch, cross_compiler = self._cross_compiler)
 
 
-class X86_64BoxBuilder(BusyboxBuilder):
+class X86_64BoxBuilder(Busybox):
     def __init__(self, build_automation: BuildAutomationTool) -> None:
         super().__init__(build_automation)
 

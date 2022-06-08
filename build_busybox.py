@@ -75,4 +75,6 @@ if __name__ == "__main__":
         make = ARMBoxBuilder(make, "arm-linux-gnueabi-")
         make.build(2)
 
+    run(f"mkdir initrd/home && cp -r default_dpkgs/ -t initrd/home/", shell=True, check=True)
+
     exit(0)

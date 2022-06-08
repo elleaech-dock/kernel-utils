@@ -45,6 +45,7 @@ cp ${confdir}/busybox.config ${busyboxdir}/.config
   cur_dir=$pwd
   cd ..
   python3 build_busybox.py $1
+  mkdir initrd/home && cp -r default_dpkgs/ -t initrd/home/
   cd $cur_dir
 )
 

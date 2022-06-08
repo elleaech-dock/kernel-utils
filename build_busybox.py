@@ -1,4 +1,4 @@
-from subprocess import run
+from subprocess import CompletedProcess, run
 from os import chdir, getcwd
 from abc import ABC, abstractmethod
 from sys import exit
@@ -6,7 +6,7 @@ from sys import exit
 import argparse
 
 
-def parse_cli_args() -> argparse.ArgumentParser:
+def _parse_cli_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "arch",
@@ -18,84 +18,103 @@ def parse_cli_args() -> argparse.ArgumentParser:
     return args
 
 
-class BoxBuilder(ABC):
+class BuildAutomationTool(ABC):
     def __init__(self) -> None:
         super().__init__()
-        self._command = "make"
-        self.__basedir = f"{getcwd()}"
-        self._initrd = f"{self.__basedir}/initrd"
-        self.__busybox_dir = f"{self.__basedir}/deps/busybox"
+        self._command = ""
+        self._log_dir = f"{getcwd()}/log"
+
+    @abstractmethod
+    def build(self, procs: int, arch: str="", cross_compiler: str="") -> CompletedProcess:
+        raise NotImplementedError
+
+    @abstractmethod
+    def install(self, config_prefix: str, arch: str="", cross_compiler: str=""):
+        raise NotImplementedError
+
+    def dump_log(self) -> str:
+        return f"2>&1 | tee -a {self._log_dir}"
+
+
+class BusyboxBuilder(ABC):
+    def __init__(self, build_automation: BuildAutomationTool) -> None:
+        super().__init__()
+        self._compiler = build_automation
+        base_dir = f"{getcwd()}"
+        self._initrd = f"{base_dir}/initrd"
+        self.__busybox_dir = f"{base_dir}/deps/busybox"
 
     @abstractmethod
     def build(self, procs: int) -> None:
         raise NotImplementedError
 
-    def _goto_busybox_folder(self) -> None:
+    def goto_busybox_folder(self) -> None:
         chdir(self.__busybox_dir)
 
-    def _dump_log(self) -> str:
-        return f"2>&1 | tee -a {self.__basedir}/log"
 
-
-class CrossBoxBuilder(BoxBuilder):
-    def __init__(self, cross_compiler: str) -> None:
-        super().__init__()
+class CrossBoxBuilder(BusyboxBuilder):
+    def __init__(self, build_automation: BuildAutomationTool, cross_compiler: str) -> None:
+        super().__init__(build_automation)
         self._cross_compiler = cross_compiler
         self._arch: str = None
 
 
+class Make(BuildAutomationTool):
+    def __init__(self) -> None:
+        super().__init__()
+        self._command = "make"
+
+    def build(self, procs: int, arch: str="", cross_compiler: str="") -> CompletedProcess:
+        return run(
+                f"{self._command} -j{str(procs)} \
+                ARCH={arch} CROSS_COMPILE={cross_compiler} {self.dump_log()}",
+                shell=True,
+                check=True,
+            )
+
+    def install(self, config_prefix: str, arch: str="", cross_compiler: str=""):
+        return run(
+                f"{self._command} \
+                CONFIG_PREFIX={config_prefix} \
+                ARCH={arch} CROSS_COMPILE={cross_compiler} \
+                install {self.dump_log()}",
+                shell=True,
+                check=True,
+            )
+
+
 class ARMBoxBuilder(CrossBoxBuilder):
-    def __init__(self, compiler: str) -> None:
-        super().__init__(compiler)
+    def __init__(self, build_automation: BuildAutomationTool, cross_compiler: str) -> None:
+        super().__init__(build_automation, cross_compiler)
         self._arch = "arm"
 
     def build(self, procs: int) -> None:
-        self._goto_busybox_folder()
-
-        run(
-            f"{self._command} -j{str(procs)} \
-               ARCH={self._arch} CROSS_COMPILE={self._cross_compiler} {self._dump_log()}",
-            shell=True,
-            check=True,
-        )
-        run(
-            f"{self._command} \
-               CONFIG_PREFIX={self._initrd} \
-               ARCH={self._arch} CROSS_COMPILE={self._cross_compiler} \
-               install {self._dump_log()}",
-            shell=True,
-            check=True,
-        )
+        self.goto_busybox_folder()
+        self._compiler.build(procs, arch = self._arch, cross_compiler = self._cross_compiler)
+        self._compiler.install(self._initrd, arch = self._arch, cross_compiler = self._cross_compiler)
 
 
-class X86_64BoxBuilder(BoxBuilder):
-    def __init__(self) -> None:
-        super().__init__()
+class X86_64BoxBuilder(BusyboxBuilder):
+    def __init__(self, build_automation: BuildAutomationTool) -> None:
+        super().__init__(build_automation)
 
     def build(self, procs: int) -> None:
-        self._goto_busybox_folder()
-
-        run(
-            f"{self._command} -j{str(procs)} {self._dump_log()}",
-            shell=True,
-            check=True,
-        )
-        run(
-            f"{self._command} CONFIG_PREFIX={self._initrd} install {self._dump_log()}",
-            shell=True,
-            check=True,
-        )
+        self.goto_busybox_folder()
+        self._compiler.build(procs)
+        self._compiler.install(self._initrd)
 
 
 if __name__ == "__main__":
-    args: argparse.ArgumentParser = parse_cli_args()
+    args: argparse.ArgumentParser = _parse_cli_args()
+
+    make: BuildAutomationTool = Make()
 
     if args.arch == "x86_64":
-        make = X86_64BoxBuilder()
+        make = X86_64BoxBuilder(make)
         make.build(2)
 
     elif args.arch == "arm":
-        make = ARMBoxBuilder("arm-linux-gnueabi-")
+        make = ARMBoxBuilder(make, "arm-linux-gnueabi-")
         make.build(2)
 
     exit(0)
